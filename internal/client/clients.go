@@ -42,9 +42,18 @@ out geom;`, radiusM, lat, lng, radiusM, lat, lng, radiusM, lat, lng, radiusM, la
 	return c.doRequest(query)
 }
 
-func (c *Overpass) doRequest(query string) (*model.OverpassResponse, error) {
-	resp, err := c.client.Post(c.baseURL, "application/x-www-form-urlencoded",
-		io.NopCloser(strings.NewReader(query)))
+func (o *Overpass) doRequest(query string) (*model.OverpassResponse, error) {
+	formData := url.Values{}
+	formData.Set("data", query)
+
+	req, err := http.NewRequest("POST", o.baseURL, strings.NewReader(formData.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("overpass request create failed: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "RunningRouteRecommender/1.0 (arif@arif-kurniawan.site)")
+
+	resp, err := o.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("overpass request failed: %w", err)
 	}
@@ -55,12 +64,25 @@ func (c *Overpass) doRequest(query string) (*model.OverpassResponse, error) {
 		return nil, fmt.Errorf("overpass read failed: %w", err)
 	}
 
+	// Check if Overpass returned HTML (rate limit / error page)
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "text/html") || len(body) > 0 && body[0] == '<' {
+		return nil, fmt.Errorf("overpass returned HTML (rate limited?): %s", string(body[:min(len(body), 200)]))
+	}
+
 	var result model.OverpassResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("overpass decode failed: %w", err)
+		return nil, fmt.Errorf("overpass decode failed: %w (body: %s)", err, string(body[:min(len(body), 200)]))
 	}
 
 	return &result, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // --- OSRM Client ---

@@ -22,6 +22,7 @@ func New(recommend *service.Recommendation, geocoding *service.Geocoding) *Handl
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/routes/recommend", h.RecommendRoutes)
 	mux.HandleFunc("GET /api/v1/routes/{id}/weather", h.GetRouteWeather)
+	mux.HandleFunc("GET /api/v1/routes/weather", h.GetRouteWeather)
 	mux.HandleFunc("GET /api/v1/geocode/search", h.GeocodeSearch)
 	mux.HandleFunc("GET /api/v1/health", h.Health)
 }

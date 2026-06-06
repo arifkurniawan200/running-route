@@ -179,7 +179,7 @@ func (s *Route) GenerateLoop(lat, lng float64, targetDistanceKm float64, points 
 		Surface:              best.Surface,
 		Rating:               rating,
 		GeoJSON:              geojson,
-		EstimatedDurationMin: int(distanceKm * 7 * 60 / 60), // pace-based estimation
+		EstimatedDurationMin: int(distanceKm * 60.0 / 8.5), // ~7 min/km casual pace
 		Waypoints: []model.Waypoint{
 			{Lat: best.Lat, Lng: best.Lng, Name: fmt.Sprintf("Start - %s", best.Name)},
 			{Lat: second.Lat, Lng: second.Lng, Name: fmt.Sprintf("Belok - %s", second.Name)},

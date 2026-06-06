@@ -109,7 +109,7 @@ func (s *Recommendation) fallbackRoute(req *model.RecommendRequest, targetKm flo
 			Name:                 d.name,
 			Type:                 "loop",
 			DistanceKm:           math.Round(distance*10) / 10,
-			EstimatedDurationMin: int(distance * paceToSpeed(req.Pace) * 60),
+			EstimatedDurationMin: int(distance / paceToSpeed(req.Pace) * 60),
 			Difficulty:           difficulty,
 			Surface:              surface,
 			ElevationGainM:       15 + float64(i)*10,
