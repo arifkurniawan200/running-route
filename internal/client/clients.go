@@ -65,8 +65,7 @@ func (o *Overpass) doRequest(query string) (*model.OverpassResponse, error) {
 	}
 
 	// Check if Overpass returned HTML (rate limit / error page)
-	contentType := resp.Header.Get("Content-Type")
-	if strings.Contains(contentType, "text/html") || len(body) > 0 && body[0] == '<' {
+	if isHTML(body) {
 		return nil, fmt.Errorf("overpass returned HTML (rate limited?): %s", string(body[:min(len(body), 200)]))
 	}
 
@@ -83,6 +82,11 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// isHTML checks if response body starts with '<' (HTML error page)
+func isHTML(body []byte) bool {
+	return len(body) > 0 && body[0] == '<'
 }
 
 // --- OSRM Client ---
@@ -199,22 +203,26 @@ func (c *Nominatim) ReverseGeocode(lat, lng float64) (*model.NominatimResponse, 
 	u := fmt.Sprintf("%s/reverse?%s", c.baseURL, params.Encode())
 
 	req, _ := http.NewRequest("GET", u, nil)
-	req.Header.Set("User-Agent", "RunningRouteRecommender/1.0")
+	req.Header.Set("User-Agent", "RunningRouteRecommender/1.0 (arif@arif-kurniawan.site)")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("nominatim request failed: %w", err)
+		return nil, fmt.Errorf("nominatim reverse request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("nominatim read failed: %w", err)
+		return nil, fmt.Errorf("nominatim reverse read failed: %w", err)
+	}
+
+	if isHTML(body) {
+		return nil, fmt.Errorf("nominatim rate limited: %s", string(body[:min(len(body), 200)]))
 	}
 
 	var result model.NominatimResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("nominatim decode failed: %w", err)
+		return nil, fmt.Errorf("nominatim reverse decode failed: %w", err)
 	}
 
 	return &result, nil
@@ -229,17 +237,21 @@ func (c *Nominatim) Search(query string) (*model.NominatimResponse, error) {
 	u := fmt.Sprintf("%s/search?%s", c.baseURL, params.Encode())
 
 	req, _ := http.NewRequest("GET", u, nil)
-	req.Header.Set("User-Agent", "RunningRouteRecommender/1.0")
+	req.Header.Set("User-Agent", "RunningRouteRecommender/1.0 (arif@arif-kurniawan.site)")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("nominatim search failed: %w", err)
+		return nil, fmt.Errorf("nominatim search request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("nominatim search read failed: %w", err)
+	}
+
+	if isHTML(body) {
+		return nil, fmt.Errorf("nominatim rate limited: %s", string(body[:min(len(body), 200)]))
 	}
 
 	var result model.NominatimResponse
