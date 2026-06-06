@@ -7,14 +7,14 @@ import "encoding/json"
 type RecommendRequest struct {
 	Lat             float64  `json:"lat"`
 	Lng             float64  `json:"lng"`
-	DurationMinutes int      `json:"duration_minutes"` // 30, 45, 60, 90, 120
-	Pace            string   `json:"pace"`             // casual, moderate, fast
-	RouteTypes      []string `json:"route_types"`      // loop, out_and_back, point_to_point
+	DurationMinutes int      `json:"duration_minutes"`
+	Pace            string   `json:"pace"`
+	RouteTypes      []string `json:"route_types"`
 }
 
 type WeatherRequest struct {
 	RouteID   string `json:"route_id"`
-	StartTime string `json:"start_time"` // ISO 8601
+	StartTime string `json:"start_time"`
 	Lat       float64
 	Lng       float64
 }
@@ -26,19 +26,38 @@ type RecommendResponse struct {
 }
 
 type RouteRecommendation struct {
-	ID                   string      `json:"id"`
-	Name                 string      `json:"name"`
-	Type                 string      `json:"type"` // loop, out_and_back, point_to_point
-	DistanceKm           float64     `json:"distance_km"`
-	EstimatedDurationMin int         `json:"estimated_duration_min"`
-	Difficulty           string      `json:"difficulty"` // easy, medium, hard
-	Surface              string      `json:"surface"`    // asphalt, gravel, grass, mixed
-	ElevationGainM       float64     `json:"elevation_gain_m"`
-	Rating               int         `json:"rating"` // 1-5
-	GeoJSON              *GeoJSON    `json:"geojson"`
-	Waypoints            []Waypoint  `json:"waypoints"`
-	NearbyPOIs           []POI       `json:"nearby_pois"`
-	Weather              *Weather    `json:"weather"`
+	ID                   string           `json:"id"`
+	Name                 string           `json:"name"`
+	Type                 string           `json:"type"`
+	DistanceKm           float64          `json:"distance_km"`
+	EstimatedDurationMin int              `json:"estimated_duration_min"`
+	Difficulty           string           `json:"difficulty"`
+	Surface              string           `json:"surface"`
+	ElevationGainM       float64          `json:"elevation_gain_m"`
+	Rating               int              `json:"rating"`
+	GeoJSON              *GeoJSON         `json:"geojson"`
+	Waypoints            []Waypoint       `json:"waypoints"`
+	NearbyPOIs           []POI            `json:"nearby_pois"`
+	Weather              *Weather         `json:"weather"`
+	Steps                []RouteStep      `json:"steps,omitempty"`
+	ElevationProfile     []ElevationPoint `json:"elevation_profile,omitempty"`
+}
+
+type RouteStep struct {
+	Instruction string  `json:"instruction"`
+	DistanceM   float64 `json:"distance_m"`
+	DurationS   float64 `json:"duration_s"`
+	Direction   string  `json:"direction"`
+	StreetName  string  `json:"street_name"`
+	Lat         float64 `json:"lat"`
+	Lng         float64 `json:"lng"`
+}
+
+type ElevationPoint struct {
+	DistanceKm float64 `json:"distance_km"`
+	ElevationM float64 `json:"elevation_m"`
+	Lat        float64 `json:"lat"`
+	Lng        float64 `json:"lng"`
 }
 
 type Waypoint struct {
@@ -48,19 +67,19 @@ type Waypoint struct {
 }
 
 type POI struct {
-	Name string  `json:"name"`
+	Name string `json:"name"`
 	Lat  float64 `json:"lat"`
 	Lng  float64 `json:"lng"`
-	Type string  `json:"type"` // toilet, water, parking, shelter
+	Type string  `json:"type"`
 }
 
 type Weather struct {
-	StartHour      string         `json:"start_hour"`
-	EndHour        string         `json:"end_hour"`
-	Hourly         []WeatherHour  `json:"hourly"`
-	Summary        string         `json:"summary"`
-	Recommendation string         `json:"recommendation"` // recommended, caution, not_recommended
-	Alerts         []string       `json:"alerts"`
+	StartHour      string        `json:"start_hour"`
+	EndHour        string        `json:"end_hour"`
+	Hourly         []WeatherHour `json:"hourly"`
+	Summary        string        `json:"summary"`
+	Recommendation string        `json:"recommendation"`
+	Alerts         []string      `json:"alerts"`
 }
 
 type WeatherHour struct {
@@ -73,8 +92,8 @@ type WeatherHour struct {
 }
 
 type GeoJSON struct {
-	Type        string           `json:"type"`
-	Coordinates [][]float64      `json:"coordinates"`
+	Type        string             `json:"type"`
+	Coordinates [][]float64        `json:"coordinates"`
 	Properties  *GeoJSONProperties `json:"properties,omitempty"`
 }
 
@@ -114,10 +133,26 @@ type OverpassGeometry struct {
 type OSRMResponse struct {
 	Code   string `json:"code"`
 	Routes []struct {
-		Distance float64          `json:"distance"` // meters
-		Duration float64          `json:"duration"` // seconds
+		Distance float64          `json:"distance"`
+		Duration float64          `json:"duration"`
 		Geometry *json.RawMessage `json:"geometry"`
+		Legs     []struct {
+			Steps []OSRMStep `json:"steps"`
+		} `json:"legs,omitempty"`
 	} `json:"routes"`
+}
+
+type OSRMStep struct {
+	Distance float64          `json:"distance"`
+	Duration float64          `json:"duration"`
+	Geometry *json.RawMessage `json:"geometry"`
+	Name     string           `json:"name"`
+	Maneuver struct {
+		BearingAfter int       `json:"bearing_after"`
+		Type         string    `json:"type"`
+		Modifier     string    `json:"modifier"`
+		Location     []float64 `json:"location"`
+	} `json:"maneuver"`
 }
 
 type OpenMeteoResponse struct {
@@ -130,6 +165,10 @@ type OpenMeteoResponse struct {
 		WindSpeed10M             []float64 `json:"wind_speed_10m"`
 		UvIndex                  []float64 `json:"uv_index"`
 	} `json:"hourly"`
+}
+
+type OpenMeteoElevationResponse struct {
+	Elevation []float64 `json:"elevation"`
 }
 
 type NominatimResponse []struct {

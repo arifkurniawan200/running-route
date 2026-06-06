@@ -23,9 +23,10 @@ func main() {
 	overpass := client.NewOverpass(cfg)
 	osrm := client.NewOSRM(cfg)
 	openMeteo := client.NewOpenMeteo(cfg)
+	elevation := client.NewElevationClient(cfg)
 	nomination := client.NewNominatim(cfg)
 
-	routeSvc := service.NewRoute(overpass, osrm)
+	routeSvc := service.NewRoute(overpass, osrm, elevation)
 	weatherSvc := service.NewWeather(openMeteo, memCache)
 	recommendSvc := service.NewRecommendation(routeSvc, weatherSvc)
 	geoAddrSvc := service.NewGeocoding(nomination)

@@ -11,12 +11,13 @@ import (
 )
 
 type Route struct {
-	overpass *client.Overpass
-	osrm     *client.OSRM
+	overpass  *client.Overpass
+	osrm      *client.OSRM
+	elevation *client.ElevationClient
 }
 
-func NewRoute(overpass *client.Overpass, osrm *client.OSRM) *Route {
-	return &Route{overpass: overpass, osrm: osrm}
+func NewRoute(overpass *client.Overpass, osrm *client.OSRM, elevation *client.ElevationClient) *Route {
+	return &Route{overpass: overpass, osrm: osrm, elevation: elevation}
 }
 
 // NearbyPoints finds parks, footways, and tracks near a location.
@@ -179,11 +180,13 @@ func (s *Route) GenerateLoop(lat, lng float64, targetDistanceKm float64, points 
 		Surface:              best.Surface,
 		Rating:               rating,
 		GeoJSON:              geojson,
-		EstimatedDurationMin: int(distanceKm * 60.0 / 8.5), // ~7 min/km casual pace
+		EstimatedDurationMin: int(distanceKm * 60.0 / 8.5),
 		Waypoints: []model.Waypoint{
 			{Lat: best.Lat, Lng: best.Lng, Name: fmt.Sprintf("Start - %s", best.Name)},
 			{Lat: second.Lat, Lng: second.Lng, Name: fmt.Sprintf("Belok - %s", second.Name)},
 		},
+		Steps:            parseOSRMSteps(osrmResp),
+		ElevationProfile: sampleElevationProfile(osrmResp),
 	}
 
 	return recommendation, osrmResp, nil
@@ -215,4 +218,155 @@ var pointPool = sync.Pool{
 	New: func() interface{} {
 		return &Point{}
 	},
+}
+
+// modifierToDirection converts OSRM maneuver modifier to Indonesian direction
+func modifierToDirection(modifier string) string {
+	switch modifier {
+	case "left":
+		return "↰ Kiri"
+	case "right":
+		return "↱ Kanan"
+	case "sharp left":
+		return "↰ Kiri Tajam"
+	case "sharp right":
+		return "↱ Kanan Tajam"
+	case "slight left":
+		return "↰ Serong Kiri"
+	case "slight right":
+		return "↱ Serong Kanan"
+	case "straight":
+		return "⬆ Lurus"
+	case "uturn":
+		return "↻ Putar Balik"
+	default:
+		return "⬆ Lurus"
+	}
+}
+
+// maneuverTypeToText converts OSRM maneuver type to Indonesian
+func maneuverTypeToText(mType string) string {
+	switch mType {
+	case "turn":
+		return "Belok"
+	case "new name":
+		return "Lanjut"
+	case "depart":
+		return "Mulai"
+	case "arrive":
+		return "Sampai"
+	case "merge":
+		return "Gabung"
+	case "on ramp":
+		return "Masuk"
+	case "off ramp":
+		return "Keluar"
+	case "fork":
+		return "Percabangan"
+	case "end of road":
+		return "Ujung Jalan"
+	case "continue":
+		return "Lanjut"
+	case "roundabout":
+		return "Bundaran"
+	case "rotary":
+		return "Bundaran"
+	case "roundabout turn":
+		return "Bundaran"
+	case "notification":
+		return ""
+	default:
+		return mType
+	}
+}
+
+// parseOSRMSteps converts OSRM step data to RouteStep models
+func parseOSRMSteps(osrmResp *model.OSRMResponse) []model.RouteStep {
+	if len(osrmResp.Routes) == 0 || len(osrmResp.Routes[0].Legs) == 0 {
+		return nil
+	}
+
+	var steps []model.RouteStep
+	for _, leg := range osrmResp.Routes[0].Legs {
+		for _, s := range leg.Steps {
+			dir := modifierToDirection(s.Maneuver.Modifier)
+			inst := fmt.Sprintf("%s %s", maneuverTypeToText(s.Maneuver.Type), dir)
+			if s.Name != "" {
+				inst = fmt.Sprintf("%s ke %s", inst, s.Name)
+			}
+
+			loc := s.Maneuver.Location
+			lat, lng := 0.0, 0.0
+			if len(loc) >= 2 {
+				lng = loc[0]
+				lat = loc[1]
+			}
+
+			steps = append(steps, model.RouteStep{
+				Instruction: inst,
+				DistanceM:   math.Round(s.Distance),
+				DurationS:   math.Round(s.Duration),
+				Direction:   dir,
+				StreetName:  s.Name,
+				Lat:         lat,
+				Lng:         lng,
+			})
+		}
+	}
+	return steps
+}
+
+// sampleElevationProfile extracts elevation sample points from OSRM geometry
+func sampleElevationProfile(osrmResp *model.OSRMResponse) []model.ElevationPoint {
+	if len(osrmResp.Routes) == 0 {
+		return nil
+	}
+
+	geojson := osrmResp.Routes[0].Geometry
+	if geojson == nil {
+		return nil
+	}
+
+	var coords struct {
+		Coordinates [][]float64 `json:"coordinates"`
+	}
+	if err := json.Unmarshal(*geojson, &coords); err != nil {
+		return nil
+	}
+
+	// Sample ~20 points evenly along the route
+	step := len(coords.Coordinates) / 20
+	if step < 1 {
+		step = 1
+	}
+
+	var profile []model.ElevationPoint
+	totalDist := 0.0
+	for i, c := range coords.Coordinates {
+		if len(c) < 2 {
+			continue
+		}
+
+		if i == 0 && len(coords.Coordinates) > 1 {
+			// Add first point
+		} else if i%step != 0 && i != len(coords.Coordinates)-1 {
+			continue
+		}
+
+		if i > 0 {
+			prev := coords.Coordinates[i-1]
+			if len(prev) >= 2 {
+				totalDist += haversine(prev[1], prev[0], c[1], c[0])
+			}
+		}
+
+		profile = append(profile, model.ElevationPoint{
+			DistanceKm: math.Round(totalDist*10) / 10,
+			ElevationM: 0, // filled by elevation client later
+			Lat:        c[1],
+			Lng:        c[0],
+		})
+	}
+
+	return profile
 }

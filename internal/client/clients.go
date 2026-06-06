@@ -89,6 +89,58 @@ func isHTML(body []byte) bool {
 	return len(body) > 0 && body[0] == '<'
 }
 
+// --- Open-Meteo Elevation Client ---
+
+type ElevationClient struct {
+	baseURL string
+	client  *http.Client
+}
+
+func NewElevationClient(cfg *config.Config) *ElevationClient {
+	return &ElevationClient{
+		baseURL: cfg.OpenMeteoURL,
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
+}
+
+func (c *ElevationClient) GetElevation(lats, lngs []float64) (*model.OpenMeteoElevationResponse, error) {
+	latStr := make([]string, len(lats))
+	lngStr := make([]string, len(lngs))
+	for i := range lats {
+		latStr[i] = fmt.Sprintf("%.6f", lats[i])
+		lngStr[i] = fmt.Sprintf("%.6f", lngs[i])
+	}
+
+	params := url.Values{}
+	params.Set("latitude", strings.Join(latStr, ","))
+	params.Set("longitude", strings.Join(lngStr, ","))
+	u := fmt.Sprintf("%s/elevation?%s", c.baseURL, params.Encode())
+
+	resp, err := c.client.Get(u)
+	if err != nil {
+		return nil, fmt.Errorf("elevation request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("elevation read failed: %w", err)
+	}
+
+	if isHTML(body) {
+		return nil, fmt.Errorf("elevation rate limited")
+	}
+
+	var result model.OpenMeteoElevationResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("elevation decode failed: %w", err)
+	}
+
+	return &result, nil
+}
+
 // --- OSRM Client ---
 
 type OSRM struct {
@@ -106,7 +158,7 @@ func NewOSRM(cfg *config.Config) *OSRM {
 }
 
 func (c *OSRM) RouteFoot(startLat, startLng, endLat, endLng float64) (*model.OSRMResponse, error) {
-	u := fmt.Sprintf("%s/route/v1/foot/%v,%v;%v,%v?geometries=geojson&overview=full",
+	u := fmt.Sprintf("%s/route/v1/foot/%v,%v;%v,%v?geometries=geojson&overview=full&steps=true&annotations=true",
 		c.baseURL, startLng, startLat, endLng, endLat)
 
 	resp, err := c.client.Get(u)
